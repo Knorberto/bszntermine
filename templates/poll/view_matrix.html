@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}{{ poll.title }} - BSZN Termintool{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>{{ poll.title }}</h1>
+    {% if poll.description %}
+        <p class="poll-description">{{ poll.description }}</p>
+    {% endif %}
+
+    {% if is_expired %}
+        <div class="alert alert-warning">Diese Umfrage ist abgelaufen.</div>
+    {% elif not poll.is_active %}
+        <div class="alert alert-warning">Diese Umfrage ist nicht mehr aktiv.</div>
+    {% else %}
+        {% if poll.allow_changes %}
+            <p class="hint">Sie können Ihre Buchung später mit demselben Namen ändern.</p>
+        {% endif %}
+        <p class="hint">
+            {% if poll.allow_multi_bookings %}
+                Mehrere Termine pro Ressource sind möglich.
+            {% else %}
+                Pro Ressource ist nur ein Termin möglich.
+            {% endif %}
+        </p>
+        <p class="hint">Pro Zeitpunkt können Sie nur eine Ressource auswählen.</p>
+
+        <form method="POST" action="{{ url_for('respond_poll', public_id=poll.public_id) }}" class="response-form">
+            <div class="form-group">
+                <label for="participant_name">Ihr Name *</label>
+                <input type="text" id="participant_name" name="participant_name" required
+                       placeholder="Max Mustermann">
+            </div>
+
+            <div class="form-group">
+                <label>Welche {{ poll.resource_label or 'Ressourcen' }} möchten Sie buchen?</label>
+                <div class="resource-selector">
+                    <div class="resource-options">
+                        {% for resource in resources %}
+                            <label class="resource-option">
+                                <input type="checkbox" class="resource-checkbox" data-resource-id="{{ resource.id }}" checked>
+                                {{ resource.name }}
+                            </label>
+                        {% endfor %}
+                    </div>
+                    <div class="resource-actions">
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="selectAllResources()">Alle auswählen</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="deselectAllResources()">Alle abwählen</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="matrix-wrapper" class="matrix-wrapper">
+                <div class="results-table-wrapper">
+                    <table class="matrix-table">
+                        <thead>
+                            <tr>
+                                <th>Termin</th>
+                                {% for resource in resources %}
+                                    <th class="matrix-header" data-resource-id="{{ resource.id }}">{{ resource.name }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for option in options %}
+                            <tr data-option-id="{{ option.id }}">
+                                <td class="option-datetime">{{ option.datetime }}</td>
+                                {% for resource in resources %}
+                                    {% set info = cell_info[resource.id][option.id] %}
+                                    <td class="matrix-cell" data-resource-id="{{ resource.id }}">
+                                        {% if info.is_full %}
+                                            <span class="slot-full-text">Ausgebucht</span>
+                                        {% else %}
+                                            {% if poll.allow_multi_bookings %}
+                                                <input type="checkbox"
+                                                       name="cell_{{ resource.id }}_{{ option.id }}"
+                                                       data-option-id="{{ option.id }}"
+                                                       aria-label="{{ resource.name }} {{ option.datetime }}">
+                                            {% else %}
+                                                <input type="radio"
+                                                       name="resource_{{ resource.id }}"
+                                                       value="{{ option.id }}"
+                                                       data-option-id="{{ option.id }}"
+                                                       aria-label="{{ resource.name }} {{ option.datetime }}">
+                                            {% endif %}
+                                        {% endif %}
+                                        {% if info.max %}
+                                            <div class="cell-capacity {{ 'slot-full-text' if info.is_full else '' }}">
+                                                {% if info.is_full %}
+                                                    {{ info.booked }}/{{ info.max }}
+                                                {% else %}
+                                                    {{ info.available }} frei
+                                                {% endif %}
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                {% endfor %}
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p id="no-resources-selected" class="empty-state" style="display:none;">
+                    Bitte wählen Sie mindestens eine Ressource aus.
+                </p>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Absenden</button>
+                <a href="{{ url_for('poll_results', public_id=poll.public_id) }}" class="btn btn-secondary">Ergebnisse ansehen</a>
+            </div>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateMatrixVisibility() {
+    const selected = Array.from(document.querySelectorAll('.resource-checkbox:checked'))
+        .map(cb => cb.getAttribute('data-resource-id'));
+    document.querySelectorAll('.matrix-header, .matrix-cell').forEach(el => {
+        const id = el.getAttribute('data-resource-id');
+        el.style.display = selected.includes(id) ? '' : 'none';
+    });
+    document.querySelectorAll('.resource-checkbox').forEach(cb => {
+        if (!cb.checked) {
+            const id = cb.getAttribute('data-resource-id');
+            document.querySelectorAll(`.matrix-cell[data-resource-id="${id}"] input`).forEach(input => {
+                if (input.type === 'radio' || input.type === 'checkbox') {
+                    input.checked = false;
+                }
+            });
+        }
+    });
+    const noSelection = selected.length === 0;
+    document.getElementById('no-resources-selected').style.display = noSelection ? 'block' : 'none';
+    document.querySelector('.matrix-table').style.display = noSelection ? 'none' : 'table';
+}
+
+function enforceSingleResourcePerSlot(event) {
+    const target = event.target;
+    if (!target || !(target.type === 'checkbox' || target.type === 'radio')) return;
+    if (!target.checked) return;
+    const optionId = target.getAttribute('data-option-id');
+    if (!optionId) return;
+    document.querySelectorAll(`.matrix-cell input[data-option-id="${optionId}"]`).forEach(input => {
+        if (input !== target) {
+            input.checked = false;
+        }
+    });
+}
+
+function selectAllResources() {
+    document.querySelectorAll('.resource-checkbox').forEach(cb => cb.checked = true);
+    updateMatrixVisibility();
+}
+
+function deselectAllResources() {
+    document.querySelectorAll('.resource-checkbox').forEach(cb => cb.checked = false);
+    updateMatrixVisibility();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.resource-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateMatrixVisibility);
+    });
+    document.querySelectorAll('.matrix-cell input').forEach(input => {
+        input.addEventListener('change', enforceSingleResourcePerSlot);
+    });
+    updateMatrixVisibility();
+});
+</script>
+{% endblock %}

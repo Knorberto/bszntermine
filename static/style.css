@@ -400,7 +400,8 @@ footer {
 
 /* ==================== Response Table ==================== */
 .response-table,
-.results-table {
+.results-table,
+.matrix-table {
     width: 100%;
     background: white;
     border-radius: 8px;
@@ -413,14 +414,17 @@ footer {
 .response-table th,
 .response-table td,
 .results-table th,
-.results-table td {
+.results-table td,
+.matrix-table th,
+.matrix-table td {
     padding: 0.75rem;
     text-align: center;
     border-bottom: 1px solid #eee;
 }
 
 .response-table th,
-.results-table th {
+.results-table th,
+.matrix-table th {
     background: #f8f9fa;
     font-weight: 600;
 }
@@ -440,6 +444,76 @@ footer {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* ==================== Matrix Booking ==================== */
+.resource-selector {
+    background: #f8f9fa;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    padding: 0.75rem;
+}
+
+.resource-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+}
+
+.resource-option {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.95rem;
+}
+
+.resource-actions {
+    margin-top: 0.75rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.matrix-wrapper {
+    margin-bottom: 1rem;
+}
+
+.matrix-cell {
+    min-width: 120px;
+}
+
+.cell-capacity {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 0.3rem;
+}
+
+.matrix-result-cell {
+    text-align: left;
+}
+
+.matrix-count {
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+
+.matrix-names {
+    font-size: 0.85rem;
+    color: #555;
+    line-height: 1.4;
+}
+
+.matrix-empty {
+    color: #999;
+    font-size: 0.85rem;
+}
+
+.matrix-row-hint td {
+    background: #f8f9fa;
+    color: #666;
+    font-size: 0.85rem;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
 }
 
 /* ==================== Results ==================== */
@@ -581,6 +655,23 @@ code {
     padding: 0.5rem;
     border: 1px solid #ddd;
     border-radius: 4px;
+}
+
+.resources-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.resource-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.resource-row input[type="text"] {
+    flex: 1;
 }
 
 /* ==================== Termin Wizard ==================== */

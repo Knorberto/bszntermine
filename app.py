@@ -68,8 +68,31 @@ def init_db():
             FOREIGN KEY (option_id) REFERENCES poll_options(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS poll_resources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            poll_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            sort_order INTEGER DEFAULT 0,
+            FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS matrix_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            poll_id INTEGER NOT NULL,
+            resource_id INTEGER NOT NULL,
+            option_id INTEGER NOT NULL,
+            participant_name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE,
+            FOREIGN KEY (resource_id) REFERENCES poll_resources(id) ON DELETE CASCADE,
+            FOREIGN KEY (option_id) REFERENCES poll_options(id) ON DELETE CASCADE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_polls_public_id ON polls(public_id);
     ''')
+    ensure_column('polls', 'poll_type', "TEXT DEFAULT 'standard'")
+    ensure_column('polls', 'resource_label', 'TEXT')
+    ensure_column('polls', 'allow_multi_bookings', 'BOOLEAN DEFAULT 0')
     db.commit()
 
 
@@ -100,6 +123,35 @@ def get_option_max_participants(option, poll):
     if option['max_participants'] is not None:
         return option['max_participants']
     return poll['max_participants']
+
+
+def ensure_column(table, column, definition):
+    db = get_db()
+    columns = db.execute(f'PRAGMA table_info({table})').fetchall()
+    if column not in [c['name'] for c in columns]:
+        db.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
+
+
+def get_poll_resources(poll_id):
+    db = get_db()
+    return db.execute(
+        'SELECT * FROM poll_resources WHERE poll_id = ? ORDER BY sort_order, id',
+        (poll_id,)
+    ).fetchall()
+
+
+def get_matrix_booking_counts(poll_id):
+    db = get_db()
+    rows = db.execute('''
+        SELECT resource_id, option_id, COUNT(*) as count
+        FROM matrix_responses
+        WHERE poll_id = ?
+        GROUP BY resource_id, option_id
+    ''', (poll_id,)).fetchall()
+    counts = {}
+    for row in rows:
+        counts[(row['resource_id'], row['option_id'])] = row['count']
+    return counts
 
 
 # ==================== Auth Helper ====================
@@ -140,6 +192,36 @@ def view_poll(public_id):
         (poll['id'],)
     ).fetchall()
 
+    # Prüfen ob abgelaufen
+    is_expired = False
+    if poll['expires_at']:
+        expires = datetime.fromisoformat(poll['expires_at'])
+        is_expired = expires < datetime.now()
+
+    if poll['poll_type'] == 'matrix':
+        resources = get_poll_resources(poll['id'])
+        booking_counts = get_matrix_booking_counts(poll['id'])
+        cell_info = {}
+        for res in resources:
+            cell_info[res['id']] = {}
+            for opt in options:
+                booked = booking_counts.get((res['id'], opt['id']), 0)
+                max_p = get_option_max_participants(opt, poll)
+                cell_info[res['id']][opt['id']] = {
+                    'booked': booked,
+                    'max': max_p,
+                    'available': (max_p - booked) if max_p else None,
+                    'is_full': (booked >= max_p) if max_p else False
+                }
+        return render_template(
+            'poll/view_matrix.html',
+            poll=poll,
+            options=options,
+            resources=resources,
+            cell_info=cell_info,
+            is_expired=is_expired
+        )
+
     # Buchungszahlen und Limits pro Option berechnen
     option_info = {}
     for opt in options:
@@ -152,17 +234,13 @@ def view_poll(public_id):
             'is_full': (booked >= max_p) if max_p else False
         }
 
-    # Prüfen ob abgelaufen
-    is_expired = False
-    if poll['expires_at']:
-        expires = datetime.fromisoformat(poll['expires_at'])
-        is_expired = expires < datetime.now()
-
-    return render_template('poll/view.html',
-                         poll=poll,
-                         options=options,
-                         option_info=option_info,
-                         is_expired=is_expired)
+    return render_template(
+        'poll/view.html',
+        poll=poll,
+        options=options,
+        option_info=option_info,
+        is_expired=is_expired
+    )
 
 
 @app.route('/poll/<public_id>/respond', methods=['POST'])
@@ -186,6 +264,81 @@ def respond_poll(public_id):
     if not participant_name:
         flash('Bitte gib deinen Namen ein.', 'error')
         return redirect(url_for('view_poll', public_id=public_id))
+
+    if poll['poll_type'] == 'matrix':
+        resources = get_poll_resources(poll['id'])
+        options = db.execute(
+            'SELECT * FROM poll_options WHERE poll_id = ? ORDER BY datetime',
+            (poll['id'],)
+        ).fetchall()
+
+        existing_bookings = db.execute('''
+            SELECT resource_id, option_id FROM matrix_responses
+            WHERE poll_id = ? AND participant_name = ?
+        ''', (poll['id'], participant_name)).fetchall()
+        has_existing = len(existing_bookings) > 0
+
+        if has_existing and not poll['allow_changes']:
+            flash('Du hast bereits gebucht. Änderungen sind bei dieser Umfrage nicht erlaubt.', 'error')
+            return redirect(url_for('view_poll', public_id=public_id))
+
+        existing_pairs = {(row['resource_id'], row['option_id']) for row in existing_bookings}
+
+        selections = []
+        if poll['allow_multi_bookings']:
+            for res in resources:
+                for opt in options:
+                    field = f'cell_{res["id"]}_{opt["id"]}'
+                    if request.form.get(field):
+                        selections.append((res['id'], opt['id']))
+        else:
+            for res in resources:
+                selected_option = request.form.get(f'resource_{res["id"]}', '').strip()
+                if selected_option:
+                    try:
+                        opt_id = int(selected_option)
+                    except ValueError:
+                        continue
+                    selections.append((res['id'], opt_id))
+
+        option_counts = {}
+        for res_id, opt_id in selections:
+            option_counts[opt_id] = option_counts.get(opt_id, 0) + 1
+        if any(count > 1 for count in option_counts.values()):
+            flash('Du kannst pro Zeitpunkt nur eine Ressource auswählen.', 'error')
+            return redirect(url_for('view_poll', public_id=public_id))
+
+        booking_counts = get_matrix_booking_counts(poll['id'])
+
+        # Kapazitäten prüfen
+        for res_id, opt_id in selections:
+            option = next((o for o in options if o['id'] == opt_id), None)
+            if not option:
+                continue
+            max_p = get_option_max_participants(option, poll)
+            if max_p:
+                current_bookings = booking_counts.get((res_id, opt_id), 0)
+                if (res_id, opt_id) in existing_pairs:
+                    current_bookings -= 1
+                if current_bookings >= max_p:
+                    flash('Ein ausgewählter Termin ist leider bereits ausgebucht.', 'error')
+                    return redirect(url_for('view_poll', public_id=public_id))
+
+        if has_existing and poll['allow_changes']:
+            db.execute(
+                'DELETE FROM matrix_responses WHERE poll_id = ? AND participant_name = ?',
+                (poll['id'], participant_name)
+            )
+
+        for res_id, opt_id in selections:
+            db.execute('''
+                INSERT INTO matrix_responses (poll_id, resource_id, option_id, participant_name)
+                VALUES (?, ?, ?, ?)
+            ''', (poll['id'], res_id, opt_id, participant_name))
+
+        db.commit()
+        flash('Deine Buchung wurde gespeichert!', 'success')
+        return redirect(url_for('poll_results', public_id=public_id))
 
     # Prüfen ob Änderungen erlaubt sind oder neue Antwort
     existing = db.execute(
@@ -252,6 +405,44 @@ def poll_results(public_id):
         'SELECT * FROM poll_options WHERE poll_id = ? ORDER BY datetime',
         (poll['id'],)
     ).fetchall()
+
+    if poll['poll_type'] == 'matrix':
+        resources = get_poll_resources(poll['id'])
+        rows = db.execute('''
+            SELECT resource_id, option_id, participant_name
+            FROM matrix_responses
+            WHERE poll_id = ?
+            ORDER BY participant_name
+        ''', (poll['id'],)).fetchall()
+
+        participants = db.execute('''
+            SELECT DISTINCT participant_name FROM matrix_responses
+            WHERE poll_id = ?
+            ORDER BY participant_name
+        ''', (poll['id'],)).fetchall()
+
+        option_limits = {}
+        for opt in options:
+            option_limits[opt['id']] = get_option_max_participants(opt, poll)
+
+        cell_entries = {}
+        for res in resources:
+            cell_entries[res['id']] = {}
+            for opt in options:
+                cell_entries[res['id']][opt['id']] = []
+
+        for row in rows:
+            cell_entries[row['resource_id']][row['option_id']].append(row['participant_name'])
+
+        return render_template(
+            'poll/results_matrix.html',
+            poll=poll,
+            options=options,
+            resources=resources,
+            participants=participants,
+            cell_entries=cell_entries,
+            option_limits=option_limits
+        )
 
     # Alle Teilnehmer
     participants = db.execute('''
@@ -338,6 +529,14 @@ def create_poll():
         expires_at = request.form.get('expires_at', '').strip() or None
         max_participants_str = request.form.get('max_participants', '').strip()
         max_participants = int(max_participants_str) if max_participants_str else None
+        poll_type = request.form.get('poll_type', 'standard')
+        resource_label = request.form.get('resource_label', '').strip() or 'Ressourcen'
+        allow_multi_bookings = request.form.get('allow_multi_bookings') == 'on'
+
+        if poll_type == 'matrix':
+            only_yes_no = False
+            if max_participants is None:
+                max_participants = 1
 
         if not title:
             flash('Titel ist erforderlich.', 'error')
@@ -361,6 +560,17 @@ def create_poll():
             flash('Mindestens ein Termin ist erforderlich.', 'error')
             return render_template('admin/create_poll.html')
 
+        resources = []
+        if poll_type == 'matrix':
+            resource_names = request.form.getlist('resource_name[]')
+            for name in resource_names:
+                clean = name.strip()
+                if clean:
+                    resources.append(clean)
+            if not resources:
+                flash('Mindestens eine Ressource ist erforderlich.', 'error')
+                return render_template('admin/create_poll.html')
+
         # Eindeutige public_id generieren
         public_id = generate_public_id()
         db = get_db()
@@ -369,10 +579,12 @@ def create_poll():
 
         cursor = db.execute('''
             INSERT INTO polls (public_id, title, description, allow_changes, only_yes_no,
-                             hide_participants, max_participants, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                             hide_participants, max_participants, expires_at, poll_type,
+                             resource_label, allow_multi_bookings)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (public_id, title, description, allow_changes, only_yes_no,
-              hide_participants, max_participants, expires_at))
+              hide_participants, max_participants, expires_at, poll_type,
+              resource_label, allow_multi_bookings))
         poll_id = cursor.lastrowid
 
         for dt_str, opt_max in options:
@@ -380,6 +592,13 @@ def create_poll():
                 'INSERT INTO poll_options (poll_id, datetime, max_participants) VALUES (?, ?, ?)',
                 (poll_id, dt_str, opt_max)
             )
+
+        if poll_type == 'matrix':
+            for idx, name in enumerate(resources):
+                db.execute(
+                    'INSERT INTO poll_resources (poll_id, name, sort_order) VALUES (?, ?, ?)',
+                    (poll_id, name, idx)
+                )
 
         db.commit()
         flash(f'Umfrage erfolgreich erstellt! Link: /poll/{public_id}', 'success')
@@ -401,6 +620,7 @@ def edit_poll(poll_id):
         'SELECT * FROM poll_options WHERE poll_id = ? ORDER BY datetime',
         (poll_id,)
     ).fetchall()
+    resources = get_poll_resources(poll_id) if poll['poll_type'] == 'matrix' else []
 
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
@@ -412,17 +632,26 @@ def edit_poll(poll_id):
         expires_at = request.form.get('expires_at', '').strip() or None
         max_participants_str = request.form.get('max_participants', '').strip()
         max_participants = int(max_participants_str) if max_participants_str else None
+        resource_label = request.form.get('resource_label', '').strip() or 'Ressourcen'
+        allow_multi_bookings = request.form.get('allow_multi_bookings') == 'on'
 
         if not title:
             flash('Titel ist erforderlich.', 'error')
-            return render_template('admin/edit_poll.html', poll=poll, options=options)
+            return render_template('admin/edit_poll.html', poll=poll, options=options, resources=resources)
+
+        if poll['poll_type'] == 'matrix':
+            only_yes_no = False
+            if max_participants is None:
+                max_participants = 1
 
         db.execute('''
             UPDATE polls SET title = ?, description = ?, allow_changes = ?,
             only_yes_no = ?, hide_participants = ?, max_participants = ?,
-            is_active = ?, expires_at = ? WHERE id = ?
+            is_active = ?, expires_at = ?, resource_label = ?, allow_multi_bookings = ?
+            WHERE id = ?
         ''', (title, description, allow_changes, only_yes_no, hide_participants,
-              max_participants, is_active, expires_at, poll_id))
+              max_participants, is_active, expires_at, resource_label,
+              allow_multi_bookings, poll_id))
 
         # Option-Limits aktualisieren
         for opt in options:
@@ -431,18 +660,34 @@ def edit_poll(poll_id):
             db.execute('UPDATE poll_options SET max_participants = ? WHERE id = ?',
                       (opt_max, opt['id']))
 
+        if poll['poll_type'] == 'matrix':
+            resource_names = request.form.getlist('resource_name[]')
+            cleaned = [name.strip() for name in resource_names if name.strip()]
+            if not cleaned:
+                flash('Mindestens eine Ressource ist erforderlich.', 'error')
+                return render_template('admin/edit_poll.html', poll=poll, options=options, resources=resources)
+
+            db.execute('DELETE FROM poll_resources WHERE poll_id = ?', (poll_id,))
+            for idx, name in enumerate(cleaned):
+                db.execute(
+                    'INSERT INTO poll_resources (poll_id, name, sort_order) VALUES (?, ?, ?)',
+                    (poll_id, name, idx)
+                )
+
         db.commit()
 
         flash('Umfrage aktualisiert!', 'success')
         return redirect(url_for('admin_dashboard'))
 
-    return render_template('admin/edit_poll.html', poll=poll, options=options)
+    return render_template('admin/edit_poll.html', poll=poll, options=options, resources=resources)
 
 
 @app.route('/admin/poll/<int:poll_id>/delete', methods=['POST'])
 @admin_required
 def delete_poll(poll_id):
     db = get_db()
+    db.execute('DELETE FROM matrix_responses WHERE poll_id = ?', (poll_id,))
+    db.execute('DELETE FROM poll_resources WHERE poll_id = ?', (poll_id,))
     db.execute('DELETE FROM responses WHERE poll_id = ?', (poll_id,))
     db.execute('DELETE FROM poll_options WHERE poll_id = ?', (poll_id,))
     db.execute('DELETE FROM polls WHERE id = ?', (poll_id,))

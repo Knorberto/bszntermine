@@ -18,6 +18,41 @@
                       placeholder="Optionale Beschreibung der Umfrage..."></textarea>
         </div>
 
+        <div class="form-group">
+            <label for="poll_type">Umfrage-Typ</label>
+            <select id="poll_type" name="poll_type" onchange="updatePollTypeUI()">
+                <option value="standard" selected>Standard-Umfrage</option>
+                <option value="matrix">Matrix-Buchung</option>
+            </select>
+        </div>
+
+        <div id="matrix-settings" class="matrix-settings" style="display:none;">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="resource_label">Bezeichnung für Ressourcen</label>
+                    <input type="text" id="resource_label" name="resource_label" placeholder="z.B. Lehrkräfte">
+                </div>
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" name="allow_multi_bookings">
+                        Mehrere Termine pro Ressource erlauben
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Ressourcen *</label>
+                <p class="hint">Eine Ressource pro Zeile (z.B. Lehrkraft, Station, Ansprechpartner).</p>
+                <div id="resources-container" class="resources-container">
+                    <div class="resource-row">
+                        <input type="text" name="resource_name[]" placeholder="Ressource (z.B. Herr Müller)">
+                        <button type="button" class="btn btn-sm btn-danger" onclick="removeResource(this)">×</button>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addResource()">+ Ressource</button>
+            </div>
+        </div>
+
         <div class="form-row">
             <div class="form-group">
                 <label for="expires_at">Ablaufdatum (optional)</label>
@@ -40,7 +75,7 @@
             </div>
         </div>
 
-        <div class="form-row">
+        <div class="form-row standard-only">
             <div class="form-group checkbox-group">
                 <label>
                     <input type="checkbox" name="only_yes_no">
@@ -658,6 +693,40 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('daily-start').value = today;
     document.getElementById('slots-date').value = today;
     document.getElementById('quick-slots-date').value = today;
+    updatePollTypeUI();
 });
+
+function updatePollTypeUI() {
+    const pollType = document.getElementById('poll_type').value;
+    const matrixSettings = document.getElementById('matrix-settings');
+    const standardOnly = document.querySelectorAll('.standard-only');
+    if (pollType === 'matrix') {
+        matrixSettings.style.display = 'block';
+        standardOnly.forEach(el => el.style.display = 'none');
+    } else {
+        matrixSettings.style.display = 'none';
+        standardOnly.forEach(el => el.style.display = 'flex');
+    }
+}
+
+function addResource(name = '') {
+    const container = document.getElementById('resources-container');
+    const row = document.createElement('div');
+    row.className = 'resource-row';
+    row.innerHTML = `
+        <input type="text" name="resource_name[]" value="${name}" placeholder="Ressource (z.B. Herr Müller)">
+        <button type="button" class="btn btn-sm btn-danger" onclick="removeResource(this)">×</button>
+    `;
+    container.appendChild(row);
+}
+
+function removeResource(btn) {
+    const container = document.getElementById('resources-container');
+    if (container.children.length > 1) {
+        btn.parentElement.remove();
+    } else {
+        btn.parentElement.querySelector('input').value = '';
+    }
+}
 </script>
 {% endblock %}

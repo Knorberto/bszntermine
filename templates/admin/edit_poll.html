@@ -18,6 +18,49 @@
             <textarea id="description" name="description" rows="3">{{ poll.description or '' }}</textarea>
         </div>
 
+        <div class="form-group">
+            <label>Umfrage-Typ</label>
+            <p class="hint">{{ 'Matrix-Buchung' if poll.poll_type == 'matrix' else 'Standard-Umfrage' }}</p>
+        </div>
+
+        {% if poll.poll_type == 'matrix' %}
+            <div class="matrix-settings">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="resource_label">Bezeichnung für Ressourcen</label>
+                        <input type="text" id="resource_label" name="resource_label"
+                               value="{{ poll.resource_label or 'Ressourcen' }}">
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" name="allow_multi_bookings"
+                                   {{ 'checked' if poll.allow_multi_bookings else '' }}>
+                            Mehrere Termine pro Ressource erlauben
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Ressourcen *</label>
+                    <div id="resources-container" class="resources-container">
+                        {% for resource in resources %}
+                            <div class="resource-row">
+                                <input type="text" name="resource_name[]" value="{{ resource.name }}">
+                                <button type="button" class="btn btn-sm btn-danger" onclick="removeResource(this)">×</button>
+                            </div>
+                        {% endfor %}
+                        {% if resources|length == 0 %}
+                            <div class="resource-row">
+                                <input type="text" name="resource_name[]" placeholder="Ressource">
+                                <button type="button" class="btn btn-sm btn-danger" onclick="removeResource(this)">×</button>
+                            </div>
+                        {% endif %}
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="addResource()">+ Ressource</button>
+                </div>
+            </div>
+        {% endif %}
+
         <div class="form-row">
             <div class="form-group">
                 <label for="expires_at">Ablaufdatum (optional)</label>
@@ -48,7 +91,7 @@
             </div>
         </div>
 
-        <div class="form-row">
+        <div class="form-row standard-only" style="{{ 'display:none;' if poll.poll_type == 'matrix' else '' }}">
             <div class="form-group checkbox-group">
                 <label>
                     <input type="checkbox" name="only_yes_no" {{ 'checked' if poll.only_yes_no else '' }}>
@@ -94,4 +137,30 @@
         </div>
     </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addResource(name = '') {
+    const container = document.getElementById('resources-container');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'resource-row';
+    row.innerHTML = `
+        <input type="text" name="resource_name[]" value="${name}">
+        <button type="button" class="btn btn-sm btn-danger" onclick="removeResource(this)">×</button>
+    `;
+    container.appendChild(row);
+}
+
+function removeResource(btn) {
+    const container = document.getElementById('resources-container');
+    if (!container) return;
+    if (container.children.length > 1) {
+        btn.parentElement.remove();
+    } else {
+        btn.parentElement.querySelector('input').value = '';
+    }
+}
+</script>
 {% endblock %}

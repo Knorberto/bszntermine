@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Ergebnisse: {{ poll.title }} - BSZN Termintool{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Ergebnisse: {{ poll.title }}</h1>
+    {% if poll.description %}
+        <p class="poll-description">{{ poll.description }}</p>
+    {% endif %}
+
+    {% if participants %}
+        {% if poll.hide_participants and session.get('is_admin') %}
+            <p class="hint">Admin-Ansicht: Teilnehmernamen sind für andere Benutzer verborgen.</p>
+        {% endif %}
+        <div class="results-table-wrapper">
+            <table class="results-table matrix-results-table">
+                <thead>
+                    <tr>
+                        <th>Termin</th>
+                        {% for resource in resources %}
+                            <th class="participant">{{ resource.name }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for option in options %}
+                        <tr>
+                            <td class="option-datetime">{{ option.datetime }}</td>
+                            {% for resource in resources %}
+                                {% set names = cell_entries[resource.id][option.id] %}
+                                <td class="matrix-result-cell">
+                                    <div class="matrix-count">
+                                        {{ names|length }}
+                                        {% if option_limits[option.id] %}
+                                            /{{ option_limits[option.id] }}
+                                        {% endif %}
+                                    </div>
+                                    {% if not (poll.hide_participants and not session.get('is_admin')) %}
+                                        {% if names %}
+                                            <div class="matrix-names">
+                                                {{ names|join(', ') }}
+                                            </div>
+                                        {% else %}
+                                            <div class="matrix-empty">-</div>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="empty-state">Noch keine Antworten vorhanden.</p>
+    {% endif %}
+
+    <div class="form-actions">
+        <a href="{{ url_for('view_poll', public_id=poll.public_id) }}" class="btn btn-primary">Teilnehmen</a>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">Zurück zur Übersicht</a>
+    </div>
+</div>
+{% endblock %}
