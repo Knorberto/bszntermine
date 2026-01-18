@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Ergebnisse: {{ poll.title }} - BSZN Termintool{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Ergebnisse: {{ poll.title }}</h1>
+    {% if poll.description %}
+        <p class="poll-description">{{ poll.description }}</p>
+    {% endif %}
+
+    {% if poll.hide_participants and not session.get('is_admin') %}
+        {# Anonyme Ansicht - nur Zusammenfassung #}
+        {% if participants %}
+            <p class="hint">Diese Umfrage zeigt keine Teilnehmernamen an.</p>
+            <div class="results-table-wrapper">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Termin</th>
+                            <th class="summary">Ja</th>
+                            {% if not poll.only_yes_no %}
+                                <th class="summary">Vielleicht</th>
+                            {% endif %}
+                            <th class="summary">Nein</th>
+                            <th class="summary">Gesamt</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for option in options %}
+                            <tr>
+                                <td class="option-datetime">{{ option.datetime }}</td>
+                                <td class="summary">
+                                    <span class="count-yes">{{ summary[option.id].yes }}</span>
+                                </td>
+                                {% if not poll.only_yes_no %}
+                                    <td class="summary">
+                                        <span class="count-maybe">{{ summary[option.id].maybe }}</span>
+                                    </td>
+                                {% endif %}
+                                <td class="summary">
+                                    <span class="count-no">{{ summary[option.id].no }}</span>
+                                </td>
+                                <td class="summary">
+                                    {{ participants|length }}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="empty-state">Noch keine Antworten vorhanden.</p>
+        {% endif %}
+    {% else %}
+        {# Vollständige Ansicht mit Namen #}
+        {% if participants %}
+            {% if poll.hide_participants and session.get('is_admin') %}
+                <p class="hint">Admin-Ansicht: Teilnehmernamen sind für andere Benutzer verborgen.</p>
+            {% endif %}
+            <div class="results-table-wrapper">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Termin</th>
+                            {% for p in participants %}
+                                <th class="participant">{{ p.participant_name }}</th>
+                            {% endfor %}
+                            <th class="summary">Zusammenfassung</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for option in options %}
+                            <tr>
+                                <td class="option-datetime">{{ option.datetime }}</td>
+                                {% for p in participants %}
+                                    {% set response = responses[p.participant_name][option.id] %}
+                                    <td class="response response-{{ response }}">
+                                        {% if response == 'yes' %}
+                                            <span class="icon-yes" title="Ja">✓</span>
+                                        {% elif response == 'maybe' %}
+                                            <span class="icon-maybe" title="Vielleicht">?</span>
+                                        {% else %}
+                                            <span class="icon-no" title="Nein">✗</span>
+                                        {% endif %}
+                                    </td>
+                                {% endfor %}
+                                <td class="summary">
+                                    <span class="count-yes" title="Ja">✓ {{ summary[option.id].yes }}</span>
+                                    {% if not poll.only_yes_no %}
+                                        <span class="count-maybe" title="Vielleicht">? {{ summary[option.id].maybe }}</span>
+                                    {% endif %}
+                                    <span class="count-no" title="Nein">✗ {{ summary[option.id].no }}</span>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="legend">
+                <span class="legend-item"><span class="icon-yes">✓</span> Ja</span>
+                {% if not poll.only_yes_no %}
+                    <span class="legend-item"><span class="icon-maybe">?</span> Vielleicht</span>
+                {% endif %}
+                <span class="legend-item"><span class="icon-no">✗</span> Nein</span>
+            </div>
+        {% else %}
+            <p class="empty-state">Noch keine Antworten vorhanden.</p>
+        {% endif %}
+    {% endif %}
+
+    <div class="form-actions">
+        <a href="{{ url_for('view_poll', public_id=poll.public_id) }}" class="btn btn-primary">Teilnehmen</a>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">Zurück zur Übersicht</a>
+    </div>
+</div>
+{% endblock %}

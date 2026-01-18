@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}{{ poll.title }} - BSZN Termintool{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>{{ poll.title }}</h1>
+    {% if poll.description %}
+        <p class="poll-description">{{ poll.description }}</p>
+    {% endif %}
+
+    {% if is_expired %}
+        <div class="alert alert-warning">Diese Umfrage ist abgelaufen.</div>
+    {% elif not poll.is_active %}
+        <div class="alert alert-warning">Diese Umfrage ist nicht mehr aktiv.</div>
+    {% else %}
+        {% if poll.allow_changes %}
+            <p class="hint">Du kannst deine Antwort später mit demselben Namen ändern.</p>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('respond_poll', public_id=poll.public_id) }}" class="response-form">
+            <div class="form-group">
+                <label for="participant_name">Dein Name *</label>
+                <input type="text" id="participant_name" name="participant_name" required
+                       placeholder="Max Mustermann">
+            </div>
+
+            <table class="response-table">
+                <thead>
+                    <tr>
+                        <th>Termin</th>
+                        <th class="response-option">Ja</th>
+                        {% if not poll.only_yes_no %}
+                            <th class="response-option">Vielleicht</th>
+                        {% endif %}
+                        <th class="response-option">Nein</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for option in options %}
+                        {% set info = option_info[option.id] %}
+                        <tr class="{{ 'slot-full' if info.is_full else '' }}">
+                            <td class="option-datetime">
+                                {{ option.datetime }}
+                                {% if info.max %}
+                                    <br>
+                                    <small class="slot-info {{ 'slot-full-text' if info.is_full else '' }}">
+                                        {% if info.is_full %}
+                                            Ausgebucht ({{ info.booked }}/{{ info.max }})
+                                        {% else %}
+                                            {{ info.available }} von {{ info.max }} Plätzen frei
+                                        {% endif %}
+                                    </small>
+                                {% endif %}
+                            </td>
+                            <td class="response-option">
+                                {% if info.is_full %}
+                                    <input type="radio" name="option_{{ option.id }}" value="no" checked disabled>
+                                    <input type="hidden" name="option_{{ option.id }}" value="no">
+                                {% else %}
+                                    <input type="radio" name="option_{{ option.id }}" value="yes" checked>
+                                {% endif %}
+                            </td>
+                            {% if not poll.only_yes_no %}
+                                <td class="response-option">
+                                    <input type="radio" name="option_{{ option.id }}" value="maybe"
+                                           {{ 'disabled' if info.is_full else '' }}>
+                                </td>
+                            {% endif %}
+                            <td class="response-option">
+                                <input type="radio" name="option_{{ option.id }}" value="no"
+                                       {{ 'checked' if info.is_full else '' }}>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Absenden</button>
+                <a href="{{ url_for('poll_results', public_id=poll.public_id) }}" class="btn btn-secondary">Ergebnisse ansehen</a>
+            </div>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

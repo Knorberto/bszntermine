@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Umfrage bearbeiten - BSZN Termintool{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Umfrage bearbeiten</h1>
+    <p class="hint">Link: <code>/poll/{{ poll.public_id }}</code></p>
+
+    <form method="POST" class="poll-form">
+        <div class="form-group">
+            <label for="title">Titel *</label>
+            <input type="text" id="title" name="title" value="{{ poll.title }}" required>
+        </div>
+
+        <div class="form-group">
+            <label for="description">Beschreibung</label>
+            <textarea id="description" name="description" rows="3">{{ poll.description or '' }}</textarea>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="expires_at">Ablaufdatum (optional)</label>
+                <input type="datetime-local" id="expires_at" name="expires_at"
+                       value="{{ poll.expires_at[:16] if poll.expires_at else '' }}">
+            </div>
+
+            <div class="form-group">
+                <label for="max_participants">Max. Teilnehmer pro Termin (Default)</label>
+                <input type="number" id="max_participants" name="max_participants" min="1"
+                       value="{{ poll.max_participants or '' }}" placeholder="Unbegrenzt">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" name="allow_changes" {{ 'checked' if poll.allow_changes else '' }}>
+                    Teilnehmer dürfen Antworten ändern
+                </label>
+            </div>
+
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" name="is_active" {{ 'checked' if poll.is_active else '' }}>
+                    Umfrage ist aktiv
+                </label>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" name="only_yes_no" {{ 'checked' if poll.only_yes_no else '' }}>
+                    Nur Ja/Nein (ohne "Vielleicht")
+                </label>
+            </div>
+
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" name="hide_participants" {{ 'checked' if poll.hide_participants else '' }}>
+                    Teilnehmernamen vor anderen verbergen
+                </label>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Terminoptionen (Max-Werte anpassbar)</label>
+            <table class="options-edit-table">
+                <thead>
+                    <tr>
+                        <th>Termin</th>
+                        <th>Max. Teilnehmer</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for option in options %}
+                        <tr>
+                            <td>{{ option.datetime }}</td>
+                            <td>
+                                <input type="number" name="option_max_{{ option.id }}" min="1"
+                                       value="{{ option.max_participants or '' }}"
+                                       placeholder="Default ({{ poll.max_participants or 'unbegrenzt' }})">
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Änderungen speichern</button>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Abbrechen</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

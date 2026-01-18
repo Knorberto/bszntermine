@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Aktive Umfragen - BSZN Termintool{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Aktive Umfragen</h1>
+
+    {% if polls %}
+        <div class="poll-list">
+            {% for poll in polls %}
+                <div class="poll-card">
+                    <h2>{{ poll.title }}</h2>
+                    {% if poll.description %}
+                        <p class="description">{{ poll.description }}</p>
+                    {% endif %}
+                    <p class="meta">
+                        Erstellt: {{ poll.created_at[:16] }}
+                        {% if poll.expires_at %}
+                            | Läuft ab: {{ poll.expires_at[:16] }}
+                        {% endif %}
+                    </p>
+                    <div class="poll-actions">
+                        <a href="{{ url_for('view_poll', public_id=poll.public_id) }}" class="btn btn-primary">Teilnehmen</a>
+                        <a href="{{ url_for('poll_results', public_id=poll.public_id) }}" class="btn btn-secondary">Ergebnisse</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="empty-state">Keine aktiven Umfragen vorhanden.</p>
+    {% endif %}
+</div>
+{% endblock %}

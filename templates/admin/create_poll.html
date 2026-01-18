@@ -1,0 +1,663 @@
+{% extends "base.html" %}
+
+{% block title %}Neue Umfrage erstellen - BSZN Termintool{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Neue Umfrage erstellen</h1>
+
+    <form method="POST" class="poll-form">
+        <div class="form-group">
+            <label for="title">Titel *</label>
+            <input type="text" id="title" name="title" required placeholder="z.B. Teambesprechung März">
+        </div>
+
+        <div class="form-group">
+            <label for="description">Beschreibung</label>
+            <textarea id="description" name="description" rows="3"
+                      placeholder="Optionale Beschreibung der Umfrage..."></textarea>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="expires_at">Ablaufdatum (optional)</label>
+                <input type="datetime-local" id="expires_at" name="expires_at">
+            </div>
+
+            <div class="form-group">
+                <label for="max_participants">Max. Teilnehmer pro Termin (optional)</label>
+                <input type="number" id="max_participants" name="max_participants" min="1"
+                       placeholder="Unbegrenzt">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" name="allow_changes">
+                    Teilnehmer dürfen Antworten ändern
+                </label>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" name="only_yes_no">
+                    Nur Ja/Nein (ohne "Vielleicht")
+                </label>
+            </div>
+
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" name="hide_participants">
+                    Teilnehmernamen vor anderen verbergen
+                </label>
+            </div>
+        </div>
+
+        <!-- Termin-Tabs -->
+        <div class="form-group">
+            <label>Terminoptionen *</label>
+            <div class="term-tabs">
+                <button type="button" class="tab-btn active" onclick="switchTab('manual')">Manuell</button>
+                <button type="button" class="tab-btn" onclick="switchTab('wizard')">Wizard</button>
+            </div>
+
+            <!-- Manueller Modus -->
+            <div id="tab-manual" class="tab-content active">
+                <p class="hint">Termine einzeln hinzufügen. Das Max-Feld überschreibt den globalen Default.</p>
+                <div id="options-container">
+                    <div class="option-row">
+                        <input type="date" name="option_date[]">
+                        <input type="text" name="option_time[]" placeholder="Zeit (z.B. 09:00 oder 09:00-09:30)" class="time-text-input">
+                        <input type="number" name="option_max[]" min="1" placeholder="Max" class="option-max-input">
+                        <button type="button" class="btn btn-sm btn-danger remove-option" onclick="removeOption(this)">×</button>
+                    </div>
+                </div>
+                <div class="manual-actions">
+                    <button type="button" class="btn btn-secondary" onclick="addOption()">+ 1 Termin</button>
+                    <span class="bulk-add">
+                        <input type="number" id="bulk-count" value="5" min="1" max="50" class="bulk-input">
+                        <button type="button" class="btn btn-secondary" onclick="addMultipleOptions()">leere Zeilen</button>
+                    </span>
+                </div>
+
+                <!-- Schnell-Slots Generator -->
+                <div class="quick-slots-box">
+                    <div class="quick-slots-header" onclick="toggleQuickSlots()">
+                        <span>Zeitslots generieren</span>
+                        <span id="quick-slots-toggle">▼</span>
+                    </div>
+                    <div id="quick-slots-content" class="quick-slots-content" style="display:none;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Datum</label>
+                                <input type="date" id="quick-slots-date">
+                            </div>
+                            <div class="form-group">
+                                <label>Von</label>
+                                <input type="time" id="quick-slots-start" value="09:00">
+                            </div>
+                            <div class="form-group">
+                                <label>Bis</label>
+                                <input type="time" id="quick-slots-end" value="17:00">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Slot-Dauer (Min.)</label>
+                                <input type="number" id="quick-slots-duration" value="30" min="5" max="480" step="5">
+                            </div>
+                            <div class="form-group">
+                                <label>Pause (Min.)</label>
+                                <input type="number" id="quick-slots-break" value="0" min="0" max="120" step="5">
+                            </div>
+                            <div class="form-group" style="align-self: flex-end;">
+                                <button type="button" class="btn btn-primary" onclick="addQuickSlots()">Slots hinzufügen</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wizard Modus -->
+            <div id="tab-wizard" class="tab-content">
+                <div class="wizard-box">
+                    <div class="form-group">
+                        <label>Wiederholungsmuster</label>
+                        <select id="wizard-mode" onchange="updateWizardUI()">
+                            <option value="weekly">Wöchentlich (bestimmte Wochentage)</option>
+                            <option value="daily">Täglich</option>
+                            <option value="slots">Zeitslots an einem Tag</option>
+                        </select>
+                    </div>
+
+                    <!-- Wöchentlich -->
+                    <div id="wizard-weekly" class="wizard-section">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Startdatum</label>
+                                <input type="date" id="weekly-start">
+                            </div>
+                            <div class="form-group">
+                                <label>Anzahl Wochen</label>
+                                <input type="number" id="weekly-weeks" value="4" min="1" max="52">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Wochentage</label>
+                            <div class="weekday-selector">
+                                <label><input type="checkbox" value="1" class="weekday-cb"> Mo</label>
+                                <label><input type="checkbox" value="2" class="weekday-cb"> Di</label>
+                                <label><input type="checkbox" value="3" class="weekday-cb"> Mi</label>
+                                <label><input type="checkbox" value="4" class="weekday-cb"> Do</label>
+                                <label><input type="checkbox" value="5" class="weekday-cb"> Fr</label>
+                                <label><input type="checkbox" value="6" class="weekday-cb"> Sa</label>
+                                <label><input type="checkbox" value="0" class="weekday-cb"> So</label>
+                            </div>
+                        </div>
+
+                        <!-- Uhrzeiten-Modus Auswahl -->
+                        <div class="form-group">
+                            <label>Uhrzeiten</label>
+                            <div class="time-mode-selector">
+                                <label><input type="radio" name="weekly-time-mode" value="single" checked onchange="updateWeeklyTimeMode()"> Einzelne Uhrzeit</label>
+                                <label><input type="radio" name="weekly-time-mode" value="multiple" onchange="updateWeeklyTimeMode()"> Mehrere Uhrzeiten</label>
+                                <label><input type="radio" name="weekly-time-mode" value="slots" onchange="updateWeeklyTimeMode()"> Zeitslots generieren</label>
+                            </div>
+                        </div>
+
+                        <!-- Einzelne Uhrzeit -->
+                        <div id="weekly-time-single" class="time-input-section">
+                            <div class="form-group">
+                                <input type="time" id="weekly-time">
+                                <span class="hint">Optional - leer lassen für nur Datum</span>
+                            </div>
+                        </div>
+
+                        <!-- Mehrere Uhrzeiten -->
+                        <div id="weekly-time-multiple" class="time-input-section" style="display:none;">
+                            <div id="weekly-times-container">
+                                <div class="time-row">
+                                    <input type="time" class="weekly-time-input" value="09:00">
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="removeTimeRow(this)">×</button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="addWeeklyTime()">+ Uhrzeit</button>
+                        </div>
+
+                        <!-- Zeitslots -->
+                        <div id="weekly-time-slots" class="time-input-section" style="display:none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Von</label>
+                                    <input type="time" id="weekly-slots-start" value="09:00">
+                                </div>
+                                <div class="form-group">
+                                    <label>Bis</label>
+                                    <input type="time" id="weekly-slots-end" value="17:00">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Slot-Dauer (Min.)</label>
+                                    <input type="number" id="weekly-slots-duration" value="30" min="5" max="480" step="5">
+                                </div>
+                                <div class="form-group">
+                                    <label>Pause (Min.)</label>
+                                    <input type="number" id="weekly-slots-break" value="0" min="0" max="120" step="5">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Täglich -->
+                    <div id="wizard-daily" class="wizard-section" style="display:none;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Startdatum</label>
+                                <input type="date" id="daily-start">
+                            </div>
+                            <div class="form-group">
+                                <label>Anzahl Tage</label>
+                                <input type="number" id="daily-days" value="7" min="1" max="365">
+                            </div>
+                        </div>
+                        <div class="form-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="daily-skip-weekends">
+                                Wochenenden überspringen
+                            </label>
+                        </div>
+
+                        <!-- Uhrzeiten-Modus Auswahl -->
+                        <div class="form-group">
+                            <label>Uhrzeiten</label>
+                            <div class="time-mode-selector">
+                                <label><input type="radio" name="daily-time-mode" value="single" checked onchange="updateDailyTimeMode()"> Einzelne Uhrzeit</label>
+                                <label><input type="radio" name="daily-time-mode" value="multiple" onchange="updateDailyTimeMode()"> Mehrere Uhrzeiten</label>
+                                <label><input type="radio" name="daily-time-mode" value="slots" onchange="updateDailyTimeMode()"> Zeitslots generieren</label>
+                            </div>
+                        </div>
+
+                        <!-- Einzelne Uhrzeit -->
+                        <div id="daily-time-single" class="time-input-section">
+                            <div class="form-group">
+                                <input type="time" id="daily-time">
+                                <span class="hint">Optional</span>
+                            </div>
+                        </div>
+
+                        <!-- Mehrere Uhrzeiten -->
+                        <div id="daily-time-multiple" class="time-input-section" style="display:none;">
+                            <div id="daily-times-container">
+                                <div class="time-row">
+                                    <input type="time" class="daily-time-input" value="09:00">
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="removeTimeRow(this)">×</button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="addDailyTime()">+ Uhrzeit</button>
+                        </div>
+
+                        <!-- Zeitslots -->
+                        <div id="daily-time-slots" class="time-input-section" style="display:none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Von</label>
+                                    <input type="time" id="daily-slots-start" value="09:00">
+                                </div>
+                                <div class="form-group">
+                                    <label>Bis</label>
+                                    <input type="time" id="daily-slots-end" value="17:00">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Slot-Dauer (Min.)</label>
+                                    <input type="number" id="daily-slots-duration" value="30" min="5" max="480" step="5">
+                                </div>
+                                <div class="form-group">
+                                    <label>Pause (Min.)</label>
+                                    <input type="number" id="daily-slots-break" value="0" min="0" max="120" step="5">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Zeitslots an einem Tag -->
+                    <div id="wizard-slots" class="wizard-section" style="display:none;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Datum</label>
+                                <input type="date" id="slots-date">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Von</label>
+                                <input type="time" id="slots-start" value="09:00">
+                            </div>
+                            <div class="form-group">
+                                <label>Bis</label>
+                                <input type="time" id="slots-end" value="17:00">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Slot-Dauer (Minuten)</label>
+                                <input type="number" id="slots-duration" value="30" min="5" max="480" step="5">
+                            </div>
+                            <div class="form-group">
+                                <label>Pause zwischen Slots (Min.)</label>
+                                <input type="number" id="slots-break" value="0" min="0" max="120" step="5">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="wizard-actions">
+                        <button type="button" class="btn btn-primary" onclick="generateTermine()">
+                            Termine generieren
+                        </button>
+                        <span class="hint" id="wizard-preview"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Umfrage erstellen</button>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Abbrechen</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Tab-Umschaltung
+function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.querySelector(`[onclick="switchTab('${tab}')"]`).classList.add('active');
+    document.getElementById(`tab-${tab}`).classList.add('active');
+}
+
+// Wizard UI aktualisieren
+function updateWizardUI() {
+    const mode = document.getElementById('wizard-mode').value;
+    document.querySelectorAll('.wizard-section').forEach(s => s.style.display = 'none');
+    document.getElementById(`wizard-${mode}`).style.display = 'block';
+}
+
+// Time Mode für Wöchentlich
+function updateWeeklyTimeMode() {
+    const mode = document.querySelector('input[name="weekly-time-mode"]:checked').value;
+    document.getElementById('weekly-time-single').style.display = mode === 'single' ? 'block' : 'none';
+    document.getElementById('weekly-time-multiple').style.display = mode === 'multiple' ? 'block' : 'none';
+    document.getElementById('weekly-time-slots').style.display = mode === 'slots' ? 'block' : 'none';
+}
+
+// Time Mode für Täglich
+function updateDailyTimeMode() {
+    const mode = document.querySelector('input[name="daily-time-mode"]:checked').value;
+    document.getElementById('daily-time-single').style.display = mode === 'single' ? 'block' : 'none';
+    document.getElementById('daily-time-multiple').style.display = mode === 'multiple' ? 'block' : 'none';
+    document.getElementById('daily-time-slots').style.display = mode === 'slots' ? 'block' : 'none';
+}
+
+// Uhrzeiten hinzufügen
+function addWeeklyTime() {
+    const container = document.getElementById('weekly-times-container');
+    const row = document.createElement('div');
+    row.className = 'time-row';
+    row.innerHTML = `
+        <input type="time" class="weekly-time-input" value="10:00">
+        <button type="button" class="btn btn-sm btn-danger" onclick="removeTimeRow(this)">×</button>
+    `;
+    container.appendChild(row);
+}
+
+function addDailyTime() {
+    const container = document.getElementById('daily-times-container');
+    const row = document.createElement('div');
+    row.className = 'time-row';
+    row.innerHTML = `
+        <input type="time" class="daily-time-input" value="10:00">
+        <button type="button" class="btn btn-sm btn-danger" onclick="removeTimeRow(this)">×</button>
+    `;
+    container.appendChild(row);
+}
+
+function removeTimeRow(btn) {
+    const container = btn.parentElement.parentElement;
+    if (container.children.length > 1) {
+        btn.parentElement.remove();
+    }
+}
+
+// Manuell Termine hinzufügen
+function addOption(date = '', time = '', max = '') {
+    const container = document.getElementById('options-container');
+    const row = document.createElement('div');
+    row.className = 'option-row';
+    row.innerHTML = `
+        <input type="date" name="option_date[]" value="${date}">
+        <input type="text" name="option_time[]" value="${time}" placeholder="Zeit (z.B. 09:00 oder 09:00-09:30)" class="time-text-input">
+        <input type="number" name="option_max[]" min="1" placeholder="Max" class="option-max-input" value="${max}">
+        <button type="button" class="btn btn-sm btn-danger remove-option" onclick="removeOption(this)">×</button>
+    `;
+    container.appendChild(row);
+}
+
+function addMultipleOptions() {
+    const count = parseInt(document.getElementById('bulk-count').value) || 5;
+    for (let i = 0; i < count; i++) {
+        addOption();
+    }
+}
+
+function removeOption(btn) {
+    const container = document.getElementById('options-container');
+    if (container.children.length > 1) {
+        btn.parentElement.remove();
+    } else {
+        const row = btn.parentElement;
+        row.querySelector('input[type="date"]').value = '';
+        row.querySelector('input[type="text"]').value = '';
+        row.querySelector('input[type="number"]').value = '';
+    }
+}
+
+function clearOptions() {
+    const container = document.getElementById('options-container');
+    container.innerHTML = '';
+}
+
+// Zeitslots generieren Helper
+function generateTimeSlots(startTime, endTime, duration, breakTime) {
+    const slots = [];
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+
+    let currentMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+
+    while (currentMinutes + duration <= endMinutes) {
+        const hours = Math.floor(currentMinutes / 60);
+        const mins = currentMinutes % 60;
+        const slotEnd = currentMinutes + duration;
+        const endHours = Math.floor(slotEnd / 60);
+        const endMins = slotEnd % 60;
+
+        slots.push(`${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}-${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}`);
+        currentMinutes += duration + breakTime;
+    }
+    return slots;
+}
+
+// Termine generieren
+function generateTermine() {
+    const mode = document.getElementById('wizard-mode').value;
+    let termine = [];
+
+    if (mode === 'weekly') {
+        termine = generateWeekly();
+    } else if (mode === 'daily') {
+        termine = generateDaily();
+    } else if (mode === 'slots') {
+        termine = generateSlots();
+    }
+
+    if (termine.length === 0) {
+        alert('Keine Termine generiert. Bitte Eingaben prüfen.');
+        return;
+    }
+
+    clearOptions();
+    termine.forEach(t => addOption(t.date, t.time, ''));
+    switchTab('manual');
+    document.getElementById('wizard-preview').textContent = `${termine.length} Termine generiert!`;
+}
+
+function generateWeekly() {
+    const startStr = document.getElementById('weekly-start').value;
+    const weeks = parseInt(document.getElementById('weekly-weeks').value) || 4;
+    const timeMode = document.querySelector('input[name="weekly-time-mode"]:checked').value;
+
+    if (!startStr) {
+        alert('Bitte Startdatum angeben.');
+        return [];
+    }
+
+    const selectedDays = [];
+    document.querySelectorAll('.weekday-cb:checked').forEach(cb => {
+        selectedDays.push(parseInt(cb.value));
+    });
+
+    if (selectedDays.length === 0) {
+        alert('Bitte mindestens einen Wochentag auswählen.');
+        return [];
+    }
+
+    // Uhrzeiten sammeln
+    let times = [];
+    if (timeMode === 'single') {
+        const t = document.getElementById('weekly-time').value;
+        times = t ? [t] : [''];
+    } else if (timeMode === 'multiple') {
+        document.querySelectorAll('.weekly-time-input').forEach(input => {
+            if (input.value) times.push(input.value);
+        });
+        if (times.length === 0) times = [''];
+    } else if (timeMode === 'slots') {
+        const start = document.getElementById('weekly-slots-start').value;
+        const end = document.getElementById('weekly-slots-end').value;
+        const duration = parseInt(document.getElementById('weekly-slots-duration').value) || 30;
+        const breakTime = parseInt(document.getElementById('weekly-slots-break').value) || 0;
+        times = generateTimeSlots(start, end, duration, breakTime);
+    }
+
+    const termine = [];
+    const start = new Date(startStr);
+    const endDate = new Date(start);
+    endDate.setDate(endDate.getDate() + (weeks * 7));
+
+    let current = new Date(start);
+    while (current < endDate) {
+        if (selectedDays.includes(current.getDay())) {
+            times.forEach(time => {
+                termine.push({
+                    date: formatDate(current),
+                    time: time
+                });
+            });
+        }
+        current.setDate(current.getDate() + 1);
+    }
+
+    return termine;
+}
+
+function generateDaily() {
+    const startStr = document.getElementById('daily-start').value;
+    const days = parseInt(document.getElementById('daily-days').value) || 7;
+    const skipWeekends = document.getElementById('daily-skip-weekends').checked;
+    const timeMode = document.querySelector('input[name="daily-time-mode"]:checked').value;
+
+    if (!startStr) {
+        alert('Bitte Startdatum angeben.');
+        return [];
+    }
+
+    // Uhrzeiten sammeln
+    let times = [];
+    if (timeMode === 'single') {
+        const t = document.getElementById('daily-time').value;
+        times = t ? [t] : [''];
+    } else if (timeMode === 'multiple') {
+        document.querySelectorAll('.daily-time-input').forEach(input => {
+            if (input.value) times.push(input.value);
+        });
+        if (times.length === 0) times = [''];
+    } else if (timeMode === 'slots') {
+        const start = document.getElementById('daily-slots-start').value;
+        const end = document.getElementById('daily-slots-end').value;
+        const duration = parseInt(document.getElementById('daily-slots-duration').value) || 30;
+        const breakTime = parseInt(document.getElementById('daily-slots-break').value) || 0;
+        times = generateTimeSlots(start, end, duration, breakTime);
+    }
+
+    const termine = [];
+    let current = new Date(startStr);
+    let count = 0;
+
+    while (count < days) {
+        const dayOfWeek = current.getDay();
+        if (!skipWeekends || (dayOfWeek !== 0 && dayOfWeek !== 6)) {
+            times.forEach(time => {
+                termine.push({
+                    date: formatDate(current),
+                    time: time
+                });
+            });
+            count++;
+        }
+        current.setDate(current.getDate() + 1);
+    }
+
+    return termine;
+}
+
+function generateSlots() {
+    const dateStr = document.getElementById('slots-date').value;
+    const startTime = document.getElementById('slots-start').value;
+    const endTime = document.getElementById('slots-end').value;
+    const duration = parseInt(document.getElementById('slots-duration').value) || 30;
+    const breakTime = parseInt(document.getElementById('slots-break').value) || 0;
+
+    if (!dateStr || !startTime || !endTime) {
+        alert('Bitte Datum und Zeitraum angeben.');
+        return [];
+    }
+
+    const slots = generateTimeSlots(startTime, endTime, duration, breakTime);
+    return slots.map(time => ({ date: dateStr, time: time }));
+}
+
+function formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+// Quick Slots im manuellen Modus
+function toggleQuickSlots() {
+    const content = document.getElementById('quick-slots-content');
+    const toggle = document.getElementById('quick-slots-toggle');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        toggle.textContent = '▲';
+    } else {
+        content.style.display = 'none';
+        toggle.textContent = '▼';
+    }
+}
+
+function addQuickSlots() {
+    const dateStr = document.getElementById('quick-slots-date').value;
+    const startTime = document.getElementById('quick-slots-start').value;
+    const endTime = document.getElementById('quick-slots-end').value;
+    const duration = parseInt(document.getElementById('quick-slots-duration').value) || 30;
+    const breakTime = parseInt(document.getElementById('quick-slots-break').value) || 0;
+
+    if (!dateStr) {
+        alert('Bitte Datum angeben.');
+        return;
+    }
+    if (!startTime || !endTime) {
+        alert('Bitte Von/Bis-Zeit angeben.');
+        return;
+    }
+
+    const slots = generateTimeSlots(startTime, endTime, duration, breakTime);
+    if (slots.length === 0) {
+        alert('Keine Slots generiert. Prüfe die Zeitangaben.');
+        return;
+    }
+
+    slots.forEach(time => addOption(dateStr, time, ''));
+    alert(`${slots.length} Slots hinzugefügt!`);
+}
+
+// Heute als Default-Datum setzen
+document.addEventListener('DOMContentLoaded', function() {
+    const today = formatDate(new Date());
+    document.getElementById('weekly-start').value = today;
+    document.getElementById('daily-start').value = today;
+    document.getElementById('slots-date').value = today;
+    document.getElementById('quick-slots-date').value = today;
+});
+</script>
+{% endblock %}
