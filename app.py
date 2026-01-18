@@ -169,14 +169,7 @@ def admin_required(f):
 
 @app.route('/')
 def index():
-    db = get_db()
-    polls = db.execute('''
-        SELECT * FROM polls
-        WHERE is_active = 1
-        AND (expires_at IS NULL OR expires_at > datetime('now'))
-        ORDER BY created_at DESC
-    ''').fetchall()
-    return render_template('index.html', polls=polls)
+    return render_template('index.html')
 
 
 @app.route('/poll/<public_id>')

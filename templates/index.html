@@ -1,34 +1,48 @@
 {% extends "base.html" %}
 
-{% block title %}Aktive Umfragen - BSZN Termintool{% endblock %}
+{% block title %}Willkommen - BSZN Termintool{% endblock %}
 
 {% block content %}
 <div class="container">
-    <h1>Aktive Umfragen</h1>
-
-    {% if polls %}
-        <div class="poll-list">
-            {% for poll in polls %}
-                <div class="poll-card">
-                    <h2>{{ poll.title }}</h2>
-                    {% if poll.description %}
-                        <p class="description">{{ poll.description }}</p>
-                    {% endif %}
-                    <p class="meta">
-                        Erstellt: {{ poll.created_at[:16] }}
-                        {% if poll.expires_at %}
-                            | Läuft ab: {{ poll.expires_at[:16] }}
-                        {% endif %}
-                    </p>
-                    <div class="poll-actions">
-                        <a href="{{ url_for('view_poll', public_id=poll.public_id) }}" class="btn btn-primary">Teilnehmen</a>
-                        <a href="{{ url_for('poll_results', public_id=poll.public_id) }}" class="btn btn-secondary">Ergebnisse</a>
+    <div class="hero">
+        <div class="hero-content">
+            <h1>BSZN Termintool</h1>
+            <p class="hero-lead">
+                Terminabstimmungen und Buchungen für Sprechzeiten, Veranstaltungen und Teams – klar, schnell und zuverlässig.
+            </p>
+            <div class="hero-actions">
+                <form class="hash-form" onsubmit="return openPollByHash()">
+                    <label for="poll_hash">Umfrage-Code</label>
+                    <div class="hash-input-row">
+                        <input type="text" id="poll_hash" name="poll_hash" placeholder="z.B. a1B2c3D4" required>
+                        <button type="submit" class="btn btn-primary">Umfrage öffnen</button>
                     </div>
-                </div>
-            {% endfor %}
+                    <p class="hint">Bitte den Code aus dem Einladungslink eingeben (z.B. <code>/poll/ABC12345</code>).</p>
+                </form>
+            </div>
         </div>
-    {% else %}
-        <p class="empty-state">Keine aktiven Umfragen vorhanden.</p>
-    {% endif %}
+        <div class="hero-card">
+            <h2>Was ist möglich?</h2>
+            <ul>
+                <li>Standard-Umfragen mit Terminoptionen</li>
+                <li>Matrix-Buchung für mehrere Ressourcen</li>
+                <li>Kontingente pro Termin und flexible Einstellungen</li>
+                <li>Auswertung mit klarer Übersicht</li>
+            </ul>
+        </div>
+    </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openPollByHash() {
+    const input = document.getElementById('poll_hash');
+    if (!input) return false;
+    const value = input.value.trim().replace(/^\/?poll\//i, '');
+    if (!value) return false;
+    window.location.href = `/poll/${value}`;
+    return false;
+}
+</script>
 {% endblock %}
