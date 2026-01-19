@@ -33,6 +33,9 @@ def close_db(exception):
 
 
 def init_db():
+    import os
+    # Stelle sicher, dass das instance-Verzeichnis existiert
+    os.makedirs(os.path.dirname(app.config['DATABASE']), exist_ok=True)
     db = get_db()
     db.executescript('''
         CREATE TABLE IF NOT EXISTS polls (
@@ -46,7 +49,8 @@ def init_db():
             only_yes_no BOOLEAN DEFAULT 0,
             hide_participants BOOLEAN DEFAULT 0,
             max_participants INTEGER,
-            is_active BOOLEAN DEFAULT 1
+            is_active BOOLEAN DEFAULT 1,
+            public_results BOOLEAN DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS poll_options (
@@ -93,6 +97,7 @@ def init_db():
     ensure_column('polls', 'poll_type', "TEXT DEFAULT 'standard'")
     ensure_column('polls', 'resource_label', 'TEXT')
     ensure_column('polls', 'allow_multi_bookings', 'BOOLEAN DEFAULT 0')
+    ensure_column('polls', 'public_results', 'BOOLEAN DEFAULT 0')
     db.commit()
 
 
@@ -393,6 +398,11 @@ def poll_results(public_id):
         flash('Umfrage nicht gefunden.', 'error')
         return redirect(url_for('index'))
 
+    # Zugriffsprüfung: Ergebnisse nur sichtbar wenn public_results=True oder Admin
+    if not poll['public_results'] and not session.get('is_admin'):
+        flash('Die Ergebnisse dieser Umfrage sind nicht öffentlich sichtbar.', 'error')
+        return redirect(url_for('view_poll', public_id=public_id))
+
     db = get_db()
     options = db.execute(
         'SELECT * FROM poll_options WHERE poll_id = ? ORDER BY datetime',
@@ -425,7 +435,9 @@ def poll_results(public_id):
                 cell_entries[res['id']][opt['id']] = []
 
         for row in rows:
-            cell_entries[row['resource_id']][row['option_id']].append(row['participant_name'])
+            # Überspringe Einträge für gelöschte Ressourcen oder Optionen
+            if row['resource_id'] in cell_entries and row['option_id'] in cell_entries[row['resource_id']]:
+                cell_entries[row['resource_id']][row['option_id']].append(row['participant_name'])
 
         return render_template(
             'poll/results_matrix.html',
@@ -525,6 +537,7 @@ def create_poll():
         poll_type = request.form.get('poll_type', 'standard')
         resource_label = request.form.get('resource_label', '').strip() or 'Ressourcen'
         allow_multi_bookings = request.form.get('allow_multi_bookings') == 'on'
+        public_results = request.form.get('public_results') == 'on'
 
         if poll_type == 'matrix':
             only_yes_no = False
@@ -573,11 +586,11 @@ def create_poll():
         cursor = db.execute('''
             INSERT INTO polls (public_id, title, description, allow_changes, only_yes_no,
                              hide_participants, max_participants, expires_at, poll_type,
-                             resource_label, allow_multi_bookings)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             resource_label, allow_multi_bookings, public_results)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (public_id, title, description, allow_changes, only_yes_no,
               hide_participants, max_participants, expires_at, poll_type,
-              resource_label, allow_multi_bookings))
+              resource_label, allow_multi_bookings, public_results))
         poll_id = cursor.lastrowid
 
         for dt_str, opt_max in options:
@@ -627,6 +640,7 @@ def edit_poll(poll_id):
         max_participants = int(max_participants_str) if max_participants_str else None
         resource_label = request.form.get('resource_label', '').strip() or 'Ressourcen'
         allow_multi_bookings = request.form.get('allow_multi_bookings') == 'on'
+        public_results = request.form.get('public_results') == 'on'
 
         if not title:
             flash('Titel ist erforderlich.', 'error')
@@ -640,11 +654,12 @@ def edit_poll(poll_id):
         db.execute('''
             UPDATE polls SET title = ?, description = ?, allow_changes = ?,
             only_yes_no = ?, hide_participants = ?, max_participants = ?,
-            is_active = ?, expires_at = ?, resource_label = ?, allow_multi_bookings = ?
+            is_active = ?, expires_at = ?, resource_label = ?, allow_multi_bookings = ?,
+            public_results = ?
             WHERE id = ?
         ''', (title, description, allow_changes, only_yes_no, hide_participants,
               max_participants, is_active, expires_at, resource_label,
-              allow_multi_bookings, poll_id))
+              allow_multi_bookings, public_results, poll_id))
 
         # Option-Limits aktualisieren
         for opt in options:

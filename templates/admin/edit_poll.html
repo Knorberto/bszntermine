@@ -91,6 +91,15 @@
             </div>
         </div>
 
+        <div class="form-row">
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" name="public_results" {{ 'checked' if poll.public_results else '' }}>
+                    Ergebnisse öffentlich sichtbar (sonst nur für Admins)
+                </label>
+            </div>
+        </div>
+
         <div class="form-row standard-only" style="{{ 'display:none;' if poll.poll_type == 'matrix' else '' }}">
             <div class="form-group checkbox-group">
                 <label>
